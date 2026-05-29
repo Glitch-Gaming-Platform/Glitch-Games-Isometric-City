@@ -65,7 +65,7 @@ Made with [Cursor](https://cursor.com).
 
 4.  **Open the game**
     Visit [http://localhost:3000](http://localhost:3000) to play IsoCity. 
-    Visit [http://localhost:3000/coaster](http://localhost:3000/coaster) to start IsoCoaster.
+    Visit [http://localhost:3000/coaster](http://localhost:3000/coaster) for IsoCoaster.
 
 ## Contributing
 
