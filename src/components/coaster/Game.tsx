@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useCoaster } from '@/context/CoasterContext';
 import { useMultiplayerOptional } from '@/context/MultiplayerContext';
 import { useMobile } from '@/hooks/useMobile';
@@ -15,7 +15,10 @@ import { Panels } from './panels/Panels';
 import { CoasterCommandMenu } from '@/components/coaster/CommandMenu';
 import { CoasterMobileTopBar, CoasterMobileToolbar } from './mobile';
 import { CoasterShareModal } from '@/components/coaster/multiplayer/CoasterShareModal';
+import { MultiplayerCommsPanel } from '@/components/multiplayer/MultiplayerCommsPanel';
 import { Copy, Check } from 'lucide-react';
+import { AudioToggleButton } from '@/lib/audio/AudioProvider';
+import { useGlitchGameServices } from '@/hooks/useGlitchGameServices';
 
 interface GameProps {
   onExit?: () => void;
@@ -37,13 +40,32 @@ export default function CoasterGame({ onExit }: GameProps) {
   const { isMobileDevice, isSmallScreen } = useMobile();
   const isMobile = isMobileDevice || isSmallScreen;
   const hasShownShareModalRef = useRef(false);
+  const glitchMetadata = useMemo(() => ({
+    game: 'coaster',
+    park_id: state.id,
+    park_name: state.settings.name,
+    guests_in_park: state.stats.guestsInPark,
+    guests_total: state.stats.guestsTotal,
+    park_rating: state.stats.parkRating,
+    cash: state.finances.cash,
+    year: state.year,
+    month: state.month,
+    grid_size: state.gridSize,
+  }), [state.finances.cash, state.gridSize, state.id, state.month, state.settings.name, state.stats.guestsInPark, state.stats.guestsTotal, state.stats.parkRating, state.year]);
+
+  useGlitchGameServices({
+    slotName: state.settings.name || 'IsoCoaster Autosave',
+    state,
+    metadata: glitchMetadata,
+  });
 
   useEffect(() => {
     if (!isMobile) return;
     const isHost = multiplayer?.connectionState === 'connected' && multiplayer?.roomCode && !multiplayer?.initialState;
     if (isHost && !hasShownShareModalRef.current) {
       hasShownShareModalRef.current = true;
-      setShowShareModal(true);
+      const frame = requestAnimationFrame(() => setShowShareModal(true));
+      return () => cancelAnimationFrame(frame);
     }
   }, [isMobile, multiplayer?.connectionState, multiplayer?.roomCode, multiplayer?.initialState]);
   
@@ -145,6 +167,8 @@ export default function CoasterGame({ onExit }: GameProps) {
                 </div>
               </div>
             )}
+            <MultiplayerCommsPanel className="absolute bottom-2 left-2 z-20" />
+            <AudioToggleButton className="absolute bottom-2 right-2 z-20 h-9 w-9 inline-flex items-center justify-center rounded bg-slate-900/90 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors" />
           </div>
           
           {/* Mobile Bottom Toolbar */}
@@ -221,6 +245,9 @@ export default function CoasterGame({ onExit }: GameProps) {
                 </div>
               </div>
             )}
+
+            <MultiplayerCommsPanel className="absolute bottom-4 left-4 z-20" />
+            <AudioToggleButton className="absolute bottom-4 right-4 z-20 h-10 w-10 inline-flex items-center justify-center rounded bg-slate-900/90 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors" />
 
             {/* Panels */}
             <Panels />

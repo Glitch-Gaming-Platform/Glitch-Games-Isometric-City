@@ -9,9 +9,11 @@ import React, {
   useRef,
 } from 'react';
 import {
-  MultiplayerProvider,
   createMultiplayerProvider,
-} from '@/lib/multiplayer/supabaseProvider';
+  DEFAULT_MULTIPLAYER_VOICE_STATE,
+  listJoinableMultiplayerRooms,
+  type MultiplayerProviderInstance,
+} from '@/lib/multiplayer/providerFactory';
 import {
   GameAction,
   GameActionInput,
@@ -19,6 +21,10 @@ import {
   ConnectionState,
   RoomData,
   MultiplayerGameState,
+  MultiplayerChatMessage,
+  MultiplayerCreateRoomOptions,
+  MultiplayerRoomSummary,
+  MultiplayerVoiceState,
 } from '@/lib/multiplayer/types';
 import { useGT } from 'gt-next';
 
@@ -38,11 +44,19 @@ interface MultiplayerContextValue {
   roomCode: string | null;
   players: Player[];
   error: string | null;
+  chatMessages: MultiplayerChatMessage[];
+  voiceState: MultiplayerVoiceState;
 
   // Actions
-  createRoom: (cityName: string, initialState: MultiplayerGameState) => Promise<string>;
+  createRoom: (cityName: string, initialState: MultiplayerGameState, options?: MultiplayerCreateRoomOptions) => Promise<string>;
   joinRoom: (roomCode: string) => Promise<RoomData>;
   leaveRoom: () => void;
+  listJoinableRooms: () => Promise<MultiplayerRoomSummary[]>;
+  sendChatMessage: (text: string) => void;
+  startVoiceChat: () => Promise<void>;
+  stopVoiceChat: () => Promise<void>;
+  setVoiceMuted: (muted: boolean) => void;
+  setVoiceDeafened: (deafened: boolean) => void;
   
   // Game action dispatch
   dispatchAction: (action: GameActionInput) => void;
@@ -58,7 +72,7 @@ interface MultiplayerContextValue {
   updateGameState: (state: MultiplayerGameState) => void;
   
   // Provider instance (for advanced usage)
-  provider: MultiplayerProvider | null;
+  provider: MultiplayerProviderInstance | null;
   
   // Legacy compatibility - always false now since there's no host
   isHost: boolean;
@@ -77,26 +91,59 @@ export function MultiplayerContextProvider({
   const [players, setPlayers] = useState<Player[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [initialState, setInitialState] = useState<MultiplayerGameState | null>(null);
-  const [provider, setProvider] = useState<MultiplayerProvider | null>(null);
+  const [provider, setProvider] = useState<MultiplayerProviderInstance | null>(null);
   const [onRemoteAction, setOnRemoteAction] = useState<((action: GameAction) => void) | null>(null);
+  const [chatMessages, setChatMessages] = useState<MultiplayerChatMessage[]>([]);
+  const [voiceState, setVoiceState] = useState<MultiplayerVoiceState>(DEFAULT_MULTIPLAYER_VOICE_STATE);
 
-  const providerRef = useRef<MultiplayerProvider | null>(null);
+  const providerRef = useRef<MultiplayerProviderInstance | null>(null);
   const onRemoteActionRef = useRef<((action: GameAction) => void) | null>(null);
+  const pendingActionsRef = useRef<GameAction[]>([]);
 
   // Set up remote action callback
   const handleSetOnRemoteAction = useCallback(
     (callback: ((action: GameAction) => void) | null) => {
       onRemoteActionRef.current = callback;
       setOnRemoteAction(callback);
+      if (callback && pendingActionsRef.current.length > 0) {
+        const queuedActions = [...pendingActionsRef.current];
+        pendingActionsRef.current = [];
+        for (const action of queuedActions) {
+          callback(action);
+        }
+      }
     },
     []
   );
 
+  const handleRemoteAction = useCallback((action: GameAction) => {
+    if (onRemoteActionRef.current) {
+      onRemoteActionRef.current(action);
+      return;
+    }
+    pendingActionsRef.current.push(action);
+    if (pendingActionsRef.current.length > 500) {
+      pendingActionsRef.current = pendingActionsRef.current.slice(-500);
+    }
+  }, []);
+
+  const handleChatMessage = useCallback((message: MultiplayerChatMessage) => {
+    setChatMessages((current) => {
+      if (current.some((item) => item.id === message.id || (message.sequence && item.sequence === message.sequence))) {
+        return current;
+      }
+      return [...current, message].slice(-100);
+    });
+  }, []);
+
   // Create a room (first player to start a session)
   const createRoom = useCallback(
-    async (cityName: string, gameState: MultiplayerGameState): Promise<string> => {
+    async (cityName: string, gameState: MultiplayerGameState, options?: MultiplayerCreateRoomOptions): Promise<string> => {
       setConnectionState('connecting');
       setError(null);
+      setChatMessages([]);
+      setVoiceState(DEFAULT_MULTIPLAYER_VOICE_STATE);
+      pendingActionsRef.current = [];
 
       try {
         // Generate room code
@@ -108,17 +155,16 @@ export function MultiplayerContextProvider({
           roomCode: newRoomCode,
           cityName,
           initialGameState: gameState,
+          createOptions: options,
           onConnectionChange: (connected) => {
             setConnectionState(connected ? 'connected' : 'disconnected');
           },
           onPlayersChange: (newPlayers) => {
             setPlayers(newPlayers);
           },
-          onAction: (action) => {
-            if (onRemoteActionRef.current) {
-              onRemoteActionRef.current(action);
-            }
-          },
+          onAction: handleRemoteAction,
+          onChatMessage: handleChatMessage,
+          onVoiceStateChange: setVoiceState,
           onError: (errorMsg) => {
             setError(errorMsg);
             setConnectionState('error');
@@ -137,7 +183,7 @@ export function MultiplayerContextProvider({
         throw err;
       }
     },
-    [gt]
+    [gt, handleChatMessage, handleRemoteAction]
   );
 
   // Join an existing room
@@ -145,6 +191,9 @@ export function MultiplayerContextProvider({
     async (code: string): Promise<RoomData> => {
       setConnectionState('connecting');
       setError(null);
+      setChatMessages([]);
+      setVoiceState(DEFAULT_MULTIPLAYER_VOICE_STATE);
+      pendingActionsRef.current = [];
 
       try {
         const normalizedCode = code.toUpperCase();
@@ -160,15 +209,13 @@ export function MultiplayerContextProvider({
           onPlayersChange: (newPlayers) => {
             setPlayers(newPlayers);
           },
-          onAction: (action) => {
-            if (onRemoteActionRef.current) {
-              onRemoteActionRef.current(action);
-            }
-          },
+          onAction: handleRemoteAction,
           onStateReceived: (state) => {
             // State loaded from database
             setInitialState(state);
           },
+          onChatMessage: handleChatMessage,
+          onVoiceStateChange: setVoiceState,
           onError: (errorMsg) => {
             setError(errorMsg);
             setConnectionState('error');
@@ -187,6 +234,7 @@ export function MultiplayerContextProvider({
           cityName: gt('Co-op City'),
           createdAt: Date.now(),
           playerCount: 1,
+          sourceOfTruth: 'glitch-lobby-event-log',
         };
 
         return room;
@@ -196,7 +244,7 @@ export function MultiplayerContextProvider({
         throw err;
       }
     },
-    [gt]
+    [gt, handleChatMessage, handleRemoteAction]
   );
 
   // Leave the current room
@@ -212,6 +260,38 @@ export function MultiplayerContextProvider({
     setPlayers([]);
     setError(null);
     setInitialState(null);
+    setChatMessages([]);
+    setVoiceState(DEFAULT_MULTIPLAYER_VOICE_STATE);
+    pendingActionsRef.current = [];
+  }, []);
+
+  const listJoinableRooms = useCallback(async () => {
+    try {
+      return await listJoinableMultiplayerRooms();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : gt('Failed to load cities'));
+      return [];
+    }
+  }, [gt]);
+
+  const sendChatMessage = useCallback((text: string) => {
+    providerRef.current?.sendChatMessage(text);
+  }, []);
+
+  const startVoiceChat = useCallback(async () => {
+    await providerRef.current?.startVoiceChat();
+  }, []);
+
+  const stopVoiceChat = useCallback(async () => {
+    await providerRef.current?.stopVoiceChat();
+  }, []);
+
+  const setVoiceMuted = useCallback((muted: boolean) => {
+    providerRef.current?.setVoiceMuted(muted);
+  }, []);
+
+  const setVoiceDeafened = useCallback((deafened: boolean) => {
+    providerRef.current?.setVoiceDeafened(deafened);
   }, []);
 
   // Dispatch a game action to all peers
@@ -248,9 +328,17 @@ export function MultiplayerContextProvider({
     roomCode,
     players,
     error,
+    chatMessages,
+    voiceState,
     createRoom,
     joinRoom,
     leaveRoom,
+    listJoinableRooms,
+    sendChatMessage,
+    startVoiceChat,
+    stopVoiceChat,
+    setVoiceMuted,
+    setVoiceDeafened,
     dispatchAction,
     initialState,
     onRemoteAction,

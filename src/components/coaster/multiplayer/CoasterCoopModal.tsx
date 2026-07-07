@@ -12,6 +12,7 @@ import * as VisuallyHidden from '@radix-ui/react-visually-hidden';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { JoinableRoomsList } from '@/components/multiplayer/JoinableRoomsList';
 import { useMultiplayer } from '@/context/MultiplayerContext';
 import { GameState as CoasterGameState } from '@/games/coaster/types';
 import { createInitialCoasterGameState } from '@/context/CoasterContext';
@@ -37,6 +38,7 @@ export function CoasterCoopModal({
   const gt = useGT();
   const [mode, setMode] = useState<Mode>('select');
   const [parkName, setParkName] = useState(gt('My Co-op Park'));
+  const [maxBuilders, setMaxBuilders] = useState(8);
   const [joinCode, setJoinCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [autoJoinAttempted, setAutoJoinAttempted] = useState(false);
@@ -96,7 +98,11 @@ export function CoasterCoopModal({
     try {
       const stateToShare = createInitialCoasterGameState(parkName);
 
-      const code = await createRoom(parkName, stateToShare);
+      const code = await createRoom(parkName, stateToShare, {
+        cityType: 'multiplayer',
+        isPublic: true,
+        maxPlayers: maxBuilders,
+      });
       window.history.replaceState({}, '', `/coaster/coop/${code}`);
 
       onStartGame(true, stateToShare, code);
@@ -108,20 +114,27 @@ export function CoasterCoopModal({
     }
   };
 
-  const handleJoinRoom = async () => {
-    if (!joinCode.trim()) return;
-    if (joinCode.length !== 5) return;
+  const handleJoinRoom = async (codeOverride?: string) => {
+    const codeToJoin = (codeOverride || joinCode).trim().toUpperCase();
+    if (!codeToJoin) return;
+    if (codeToJoin.length !== 5) return;
 
     setIsLoading(true);
     try {
-      await joinRoom(joinCode);
-      window.history.replaceState({}, '', `/coaster/coop/${joinCode.toUpperCase()}`);
+      await joinRoom(codeToJoin);
+      window.history.replaceState({}, '', `/coaster/coop/${codeToJoin}`);
       setIsLoading(false);
       setWaitingForState(true);
     } catch (err) {
       console.error('Failed to join room:', err);
       setIsLoading(false);
     }
+  };
+
+  const handleStartSinglePlayer = () => {
+    const stateToPlay = createInitialCoasterGameState(parkName || gt('My Park'));
+    onStartGame(false, stateToPlay);
+    onOpenChange(false);
   };
 
   useEffect(() => {
@@ -289,6 +302,13 @@ export function CoasterCoopModal({
 
           <div className="flex flex-col gap-3 mt-4">
             <Button
+              onClick={handleStartSinglePlayer}
+              variant="outline"
+              className="w-full py-6 text-lg font-light bg-transparent hover:bg-white/10 text-white/70 hover:text-white border border-white/15 rounded-none"
+            >
+              <T>Single Player Park</T>
+            </Button>
+            <Button
               onClick={() => setMode('create')}
               className="w-full py-6 text-lg font-light bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-none"
             >
@@ -336,6 +356,20 @@ export function CoasterCoopModal({
                   onChange={(e) => setParkName(e.target.value)}
                   placeholder={gt('My Co-op Park')}
                   className="bg-slate-800 border-slate-600 text-white placeholder:text-slate-500"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="maxBuilders" className="text-slate-300">
+                  <T>Builder Slots</T>
+                </Label>
+                <Input
+                  id="maxBuilders"
+                  type="number"
+                  min={1}
+                  max={64}
+                  value={maxBuilders}
+                  onChange={(e) => setMaxBuilders(Math.min(64, Math.max(1, Number(e.target.value) || 1)))}
+                  className="bg-slate-800 border-slate-600 text-white"
                 />
               </div>
 
@@ -444,6 +478,14 @@ export function CoasterCoopModal({
         </DialogHeader>
 
         <div className="flex flex-col gap-4 mt-4">
+          <JoinableRoomsList
+            noun="park"
+            onJoin={(code) => {
+              setJoinCode(code);
+              void handleJoinRoom(code);
+            }}
+          />
+
           <div className="space-y-2">
             <Label htmlFor="joinCode" className="text-slate-300">
               <T>Invite Code</T>
@@ -489,7 +531,7 @@ export function CoasterCoopModal({
               <T>Back</T>
             </Button>
             <Button
-              onClick={handleJoinRoom}
+              onClick={() => handleJoinRoom()}
               disabled={isLoading || joinCode.length !== 5}
               className="flex-1 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-none"
             >

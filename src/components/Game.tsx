@@ -19,7 +19,10 @@ import { useMultiplayerSync } from '@/hooks/useMultiplayerSync';
 import { useCopyRoomLink } from '@/hooks/useCopyRoomLink';
 import { useMultiplayerOptional } from '@/context/MultiplayerContext';
 import { ShareModal } from '@/components/multiplayer/ShareModal';
+import { MultiplayerCommsPanel } from '@/components/multiplayer/MultiplayerCommsPanel';
 import { Copy, Check } from 'lucide-react';
+import { AudioToggleButton } from '@/lib/audio/AudioProvider';
+import { useGlitchGameServices } from '@/hooks/useGlitchGameServices';
 
 // Import game components
 import { OverlayMode } from '@/components/game/types';
@@ -52,6 +55,22 @@ export default function Game({ onExit }: { onExit?: () => void }) {
   const isMobile = isMobileDevice || isSmallScreen;
   const [showShareModal, setShowShareModal] = useState(false);
   const multiplayer = useMultiplayerOptional();
+  const glitchMetadata = useMemo(() => ({
+    game: 'isocity',
+    city_id: state.id,
+    city_name: state.cityName,
+    population: state.stats.population,
+    money: state.stats.money,
+    year: state.year,
+    month: state.month,
+    grid_size: state.gridSize,
+  }), [state.cityName, state.gridSize, state.id, state.month, state.stats.money, state.stats.population, state.year]);
+
+  useGlitchGameServices({
+    slotName: state.cityName || 'IsoCity Autosave',
+    state,
+    metadata: glitchMetadata,
+  });
   
   // Cheat code system
   const {
@@ -216,7 +235,7 @@ export default function Game({ onExit }: { onExit?: () => void }) {
         clearTriggeredCheat();
         break;
     }
-  }, [triggeredCheat, addMoney, addNotification, clearTriggeredCheat]);
+  }, [triggeredCheat, addMoney, addNotification, clearTriggeredCheat, gt]);
   
   // Track barge deliveries to show occasional notifications
   const bargeDeliveryCountRef = useRef(0);
@@ -304,6 +323,8 @@ export default function Game({ onExit }: { onExit?: () => void }) {
                 </div>
               </div>
             )}
+            <MultiplayerCommsPanel className="absolute bottom-2 left-2 z-20" />
+            <AudioToggleButton className="absolute bottom-2 right-2 z-20 h-9 w-9 inline-flex items-center justify-center rounded bg-slate-900/90 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors" />
           </div>
           
           {/* Mobile Bottom Toolbar */}
@@ -390,6 +411,8 @@ export default function Game({ onExit }: { onExit?: () => void }) {
                 </div>
               </div>
             )}
+            <MultiplayerCommsPanel className="absolute bottom-4 left-4 z-20" />
+            <AudioToggleButton className="absolute bottom-4 right-4 z-20 h-10 w-10 inline-flex items-center justify-center rounded bg-slate-900/90 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors" />
           </div>
         </div>
         

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useEffect, useState, useRef } from 'react';
+import { emitAudioCue } from '@/lib/audio/audioEvents';
 import {
   GameState,
   Tool,
@@ -39,6 +40,14 @@ const WEATHER_CHANGE_MAX_TICKS = 240; // ~4 hours at normal speed
 
 const SPEED_TICK_INTERVALS = [0, 50, 25, 16] as const; // ms per tick for 0x-3x
 const SPEED_TRAIN_BOOSTS = [1, 1.5, 2.0, 2.5] as const; // visual velocity boost by speed
+
+function getCoasterPlacementCue(tool: Tool): Parameters<typeof emitAudioCue>[0] {
+  if (tool === 'path' || tool === 'queue') return 'build.road';
+  if (tool.startsWith('coaster_')) return 'coaster.track';
+  if (tool.startsWith('ride_') || tool.startsWith('show_')) return 'coaster.ride';
+  if (tool === 'zone_water' || tool === 'zone_land') return 'build.zone';
+  return 'build.place';
+}
 
 // =============================================================================
 // WEATHER SIMULATION
@@ -2059,10 +2068,14 @@ export function CoasterProvider({
   
   const setTool = useCallback((tool: Tool) => {
     setState(prev => ({ ...prev, selectedTool: tool }));
+    emitAudioCue('ui.select');
   }, []);
   
   const setSpeed = useCallback((speed: 0 | 1 | 2 | 3, isRemote: boolean = false) => {
     setState(prev => ({ ...prev, speed }));
+    if (!isRemote) {
+      emitAudioCue(speed === 0 ? 'simulation.pause' : 'simulation.speed');
+    }
     if (!isRemote && speedCallbackRef.current) {
       speedCallbackRef.current(speed);
     }
@@ -2924,6 +2937,9 @@ export function CoasterProvider({
     if (!isRemote && currentTool !== 'select' && currentTool !== 'bulldoze' && placeCallbackRef.current) {
       placeCallbackRef.current({ x, y, tool: currentTool });
     }
+    if (!isRemote && currentTool !== 'select' && currentTool !== 'bulldoze') {
+      emitAudioCue(getCoasterPlacementCue(currentTool));
+    }
   }, []);
   
   const bulldozeTile = useCallback((x: number, y: number, isRemote: boolean = false) => {
@@ -3042,6 +3058,9 @@ export function CoasterProvider({
     if (!isRemote && bulldozeCallbackRef.current) {
       bulldozeCallbackRef.current({ x, y });
     }
+    if (!isRemote) {
+      emitAudioCue('build.bulldoze');
+    }
   }, []);
   
   const startCoasterBuild = useCallback((coasterType: string, options?: { coasterId?: string; isRemote?: boolean }) => {
@@ -3056,6 +3075,9 @@ export function CoasterProvider({
     }));
     if (!options?.isRemote && coasterBuildCallbackRef.current) {
       coasterBuildCallbackRef.current({ coasterType: coasterType as CoasterType, coasterId: nextCoasterId });
+    }
+    if (!options?.isRemote) {
+      emitAudioCue('coaster.ride');
     }
   }, []);
   
@@ -3074,6 +3096,9 @@ export function CoasterProvider({
     }));
     if (!isRemote && coasterBuildFinishCallbackRef.current) {
       coasterBuildFinishCallbackRef.current();
+    }
+    if (!isRemote) {
+      emitAudioCue('progress.achievement');
     }
   }, []);
   
@@ -3422,6 +3447,9 @@ export function CoasterProvider({
     if (!isRemote && parkSettingsCallbackRef.current) {
       parkSettingsCallbackRef.current(settings);
     }
+    if (!isRemote) {
+      emitAudioCue('ui.select');
+    }
   }, []);
   
   const addMoney = useCallback((amount: number) => {
@@ -3429,6 +3457,9 @@ export function CoasterProvider({
       ...prev,
       finances: { ...prev.finances, cash: prev.finances.cash + amount },
     }));
+    if (amount > 0) {
+      emitAudioCue('economy.deposit');
+    }
   }, []);
 
   const clearGuests = useCallback(() => {
@@ -3459,6 +3490,7 @@ export function CoasterProvider({
       .then((ok) => {
         if (ok) {
           setHasSavedGame(true);
+          emitAudioCue('ui.confirm');
         }
       })
       .catch((e) => {
@@ -3483,6 +3515,7 @@ export function CoasterProvider({
         };
         setState(finalState);
         persistCoasterSave(finalState);
+        emitAudioCue('ui.confirm');
         return true;
       }
     } catch (e) {
@@ -3494,6 +3527,7 @@ export function CoasterProvider({
   const newGame = useCallback((name?: string) => {
     setState(createInitialCoasterGameState(name));
     setHasSavedGame(false);
+    emitAudioCue('ui.confirm');
   }, []);
   
   const exportState = useCallback((): string => {
@@ -3517,6 +3551,7 @@ export function CoasterProvider({
         };
         setState(finalState);
         persistCoasterSave(finalState);
+        emitAudioCue('ui.confirm');
         return true;
       }
     } catch (e) {

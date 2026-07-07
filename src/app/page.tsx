@@ -402,7 +402,7 @@ export default function HomePage() {
 
   // Handle co-op game start
   const handleCoopStart = (isHost: boolean, initialState?: GameState, roomCode?: string) => {
-    setIsMultiplayer(true);
+    setIsMultiplayer(!!roomCode);
     
     if (isHost && initialState) {
       // Host starts with the state they created - save it so GameProvider loads it

@@ -12,6 +12,7 @@ import * as VisuallyHidden from '@radix-ui/react-visually-hidden';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { JoinableRoomsList } from '@/components/multiplayer/JoinableRoomsList';
 import { useMultiplayer } from '@/context/MultiplayerContext';
 import { GameState } from '@/types/game';
 import { createInitialGameState, DEFAULT_GRID_SIZE } from '@/lib/simulation';
@@ -38,6 +39,7 @@ export function CoopModal({
   const gt = useGT();
   const [mode, setMode] = useState<Mode>('select');
   const [cityName, setCityName] = useState(gt('My Co-op City'));
+  const [maxBuilders, setMaxBuilders] = useState(8);
   const [joinCode, setJoinCode] = useState('');
   const [copied, setCopied] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -77,7 +79,7 @@ export function CoopModal({
           setAutoJoinError(errorMessage);
         });
     }
-  }, [open, pendingRoomCode, autoJoinAttempted, joinRoom]);
+  }, [open, pendingRoomCode, autoJoinAttempted, joinRoom, gt]);
 
   // Reset state when modal closes - cleanup any pending connection
   useEffect(() => {
@@ -105,7 +107,11 @@ export function CoopModal({
         ? { ...currentGameState, cityName } 
         : createInitialGameState(DEFAULT_GRID_SIZE, cityName);
       
-      const code = await createRoom(cityName, stateToShare);
+      const code = await createRoom(cityName, stateToShare, {
+        cityType: 'multiplayer',
+        isPublic: true,
+        maxPlayers: maxBuilders,
+      });
       // Update URL to show room code
       window.history.replaceState({}, '', `/coop/${code}`);
       
@@ -119,16 +125,17 @@ export function CoopModal({
     }
   };
 
-  const handleJoinRoom = async () => {
-    if (!joinCode.trim()) return;
-    if (joinCode.length !== 5) return;
+  const handleJoinRoom = async (codeOverride?: string) => {
+    const codeToJoin = (codeOverride || joinCode).trim().toUpperCase();
+    if (!codeToJoin) return;
+    if (codeToJoin.length !== 5) return;
     
     setIsLoading(true);
     try {
       // State will be loaded from Supabase database
-      await joinRoom(joinCode);
+      await joinRoom(codeToJoin);
       // Update URL to show room code
-      window.history.replaceState({}, '', `/coop/${joinCode.toUpperCase()}`);
+      window.history.replaceState({}, '', `/coop/${codeToJoin}`);
       // Now wait for state to be received from provider
       setIsLoading(false);
       setWaitingForState(true);
@@ -137,6 +144,12 @@ export function CoopModal({
       setIsLoading(false);
       // Error is already set by the context
     }
+  };
+
+  const handleStartSinglePlayer = () => {
+    const stateToPlay = createInitialGameState(DEFAULT_GRID_SIZE, cityName || gt('My City'));
+    onStartGame(false, stateToPlay);
+    onOpenChange(false);
   };
   
   // When we receive the initial state, start the game
@@ -324,6 +337,13 @@ export function CoopModal({
 
           <div className="flex flex-col gap-3 mt-4">
             <Button
+              onClick={handleStartSinglePlayer}
+              variant="outline"
+              className="w-full py-6 text-lg font-light bg-transparent hover:bg-white/10 text-white/70 hover:text-white border border-white/15 rounded-none"
+            >
+              <T>Single Player City</T>
+            </Button>
+            <Button
               onClick={() => setMode('create')}
               className="w-full py-6 text-lg font-light bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-none"
             >
@@ -372,6 +392,20 @@ export function CoopModal({
                   onChange={(e) => setCityName(e.target.value)}
                   placeholder={gt('My Co-op City')}
                   className="bg-slate-800 border-slate-600 text-white placeholder:text-slate-500"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="maxBuilders" className="text-slate-300">
+                  <T>Builder Slots</T>
+                </Label>
+                <Input
+                  id="maxBuilders"
+                  type="number"
+                  min={1}
+                  max={64}
+                  value={maxBuilders}
+                  onChange={(e) => setMaxBuilders(Math.min(64, Math.max(1, Number(e.target.value) || 1)))}
+                  className="bg-slate-800 border-slate-600 text-white"
                 />
               </div>
 
@@ -485,6 +519,14 @@ export function CoopModal({
         </DialogHeader>
 
         <div className="flex flex-col gap-4 mt-4">
+          <JoinableRoomsList
+            noun="city"
+            onJoin={(code) => {
+              setJoinCode(code);
+              void handleJoinRoom(code);
+            }}
+          />
+
           <div className="space-y-2">
             <Label htmlFor="joinCode" className="text-slate-300">
               <T>Invite Code</T>
@@ -532,7 +574,7 @@ export function CoopModal({
               <T>Back</T>
             </Button>
             <Button
-              onClick={handleJoinRoom}
+              onClick={() => handleJoinRoom()}
               disabled={isLoading || joinCode.length !== 5}
               className="flex-1 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-none"
             >

@@ -4,6 +4,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState, useRef } from 'react';
 import { compressToUTF16, decompressFromUTF16 } from 'lz-string';
 import { serializeAndCompressAsync } from '@/lib/saveWorkerManager';
+import { emitAudioCue } from '@/lib/audio/audioEvents';
 import { simulateTick } from '@/lib/simulation';
 import {
   Budget,
@@ -43,6 +44,13 @@ const SAVED_CITIES_INDEX_KEY = 'isocity-saved-cities-index'; // Index of all sav
 const SAVED_CITY_PREFIX = 'isocity-city-'; // Prefix for individual saved city states
 const SPRITE_PACK_STORAGE_KEY = 'isocity-sprite-pack';
 const DAY_NIGHT_MODE_STORAGE_KEY = 'isocity-day-night-mode';
+
+function getIsoCityPlacementCue(tool: Tool): Parameters<typeof emitAudioCue>[0] {
+  if (tool === 'bulldoze') return 'build.bulldoze';
+  if (tool === 'road' || tool === 'rail' || tool === 'subway') return 'build.road';
+  if (tool.startsWith('zone_')) return 'build.zone';
+  return 'build.place';
+}
 
 export type DayNightMode = 'auto' | 'day' | 'night';
 
@@ -839,10 +847,12 @@ export function GameProvider({ children, startFresh = false }: { children: React
 
   const setTool = useCallback((tool: Tool) => {
     setState((prev) => ({ ...prev, selectedTool: tool, activePanel: 'none' }));
+    emitAudioCue('ui.select');
   }, []);
 
   const setSpeed = useCallback((speed: 0 | 1 | 2 | 3) => {
     setState((prev) => ({ ...prev, speed }));
+    emitAudioCue(speed === 0 ? 'simulation.pause' : 'simulation.speed');
   }, []);
 
   const setTaxRate = useCallback((rate: number) => {
@@ -874,6 +884,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
     // For multiplayer broadcast, we need to capture the tool synchronously
     // before React batches the setState. We read from the latest state ref.
     const currentTool = latestStateRef.current.selectedTool;
+    let placementCue: Parameters<typeof emitAudioCue>[0] | null = null;
     
     setState((prev) => {
       const tool = prev.selectedTool;
@@ -907,6 +918,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
         const nextState = placeSubway(prev, x, y);
         if (nextState === prev) return prev;
         
+        if (!isRemote) placementCue = getIsoCityPlacementCue(tool);
         return {
           ...nextState,
           stats: { ...nextState.stats, money: nextState.stats.money - cost },
@@ -923,6 +935,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
         const nextState = placeWaterTerraform(prev, x, y);
         if (nextState === prev) return prev;
         
+        if (!isRemote) placementCue = getIsoCityPlacementCue(tool);
         return {
           ...nextState,
           stats: { ...nextState.stats, money: nextState.stats.money - cost },
@@ -937,6 +950,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
         const nextState = placeLandTerraform(prev, x, y);
         if (nextState === prev) return prev;
         
+        if (!isRemote) placementCue = getIsoCityPlacementCue(tool);
         return {
           ...nextState,
           stats: { ...nextState.stats, money: nextState.stats.money - cost },
@@ -964,8 +978,13 @@ export function GameProvider({ children, startFresh = false }: { children: React
         };
       }
 
+      if (!isRemote) placementCue = getIsoCityPlacementCue(tool);
       return nextState;
     });
+
+    if (placementCue) {
+      emitAudioCue(placementCue);
+    }
     
     // Broadcast to multiplayer if this is a local action (not remote)
     // We use the tool captured before setState since React 18 batches async
@@ -984,6 +1003,9 @@ export function GameProvider({ children, startFresh = false }: { children: React
       }
       return prev;
     });
+    if (upgradeSucceeded) {
+      emitAudioCue('build.upgrade');
+    }
     return upgradeSucceeded;
   }, []);
 
@@ -1095,6 +1117,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
 
   const setDisastersEnabled = useCallback((enabled: boolean) => {
     setState((prev) => ({ ...prev, disastersEnabled: enabled }));
+    emitAudioCue('ui.select');
   }, []);
   
   const setPlaceCallback = useCallback((callback: ((args: { x: number; y: number; tool: Tool }) => void) | null) => {
@@ -1110,11 +1133,13 @@ export function GameProvider({ children, startFresh = false }: { children: React
     setCurrentSpritePack(pack);
     setActiveSpritePack(pack);
     saveSpritePackId(packId);
+    emitAudioCue('ui.select');
   }, []);
 
   const setDayNightMode = useCallback((mode: DayNightMode) => {
     setDayNightModeState(mode);
     saveDayNightMode(mode);
+    emitAudioCue('ui.select');
   }, []);
 
   // Compute the visual hour based on the day/night mode override
@@ -1133,6 +1158,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
       ...fresh,
       gameVersion: (prev.gameVersion ?? 0) + 1,
     }));
+    emitAudioCue('ui.confirm');
   }, []);
 
   const loadState = useCallback((stateString: string): boolean => {
@@ -1206,6 +1232,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
           ...(parsed as GameState),
           gameVersion: (prev.gameVersion ?? 0) + 1,
         }));
+        emitAudioCue('ui.confirm');
         return true;
       }
       return false;
@@ -1426,6 +1453,9 @@ export function GameProvider({ children, startFresh = false }: { children: React
         money: prev.stats.money + amount,
       },
     }));
+    if (amount > 0) {
+      emitAudioCue('economy.deposit');
+    }
   }, []);
 
   const addNotification = useCallback((title: string, description: string, icon: string) => {
@@ -1517,6 +1547,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
       
       return newCities;
     });
+    emitAudioCue('ui.confirm');
   }, [state]);
 
   // Load a saved city from the multi-save system
@@ -1587,6 +1618,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
     
     // Also update the current game in local storage
     saveGameState(cityState);
+    emitAudioCue('ui.confirm');
     
     return true;
   }, []);
