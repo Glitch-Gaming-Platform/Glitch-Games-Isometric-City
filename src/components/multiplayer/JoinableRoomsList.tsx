@@ -5,6 +5,7 @@ import { RefreshCw, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MultiplayerRoomSummary } from '@/lib/multiplayer/types';
 import { useMultiplayer } from '@/context/MultiplayerContext';
+import { emitGlitchBehaviorEvent } from '@/lib/glitch/behaviorEvents';
 
 interface JoinableRoomsListProps {
   noun: string;
@@ -18,12 +19,20 @@ export function JoinableRoomsList({ noun, onJoin }: JoinableRoomsListProps) {
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    emitGlitchBehaviorEvent('multiplayer_discovery', 'search_start', {
+      noun,
+    });
     try {
-      setRooms(await listJoinableRooms());
+      const foundRooms = await listJoinableRooms();
+      setRooms(foundRooms);
+      emitGlitchBehaviorEvent('multiplayer_discovery', 'search_complete', {
+        noun,
+        results_count: foundRooms.length,
+      });
     } finally {
       setLoading(false);
     }
-  }, [listJoinableRooms]);
+  }, [listJoinableRooms, noun]);
 
   useEffect(() => {
     refresh();
@@ -54,7 +63,15 @@ export function JoinableRoomsList({ noun, onJoin }: JoinableRoomsListProps) {
             <button
               type="button"
               key={room.roomCode}
-              onClick={() => onJoin(room.roomCode)}
+              onClick={() => {
+                emitGlitchBehaviorEvent('multiplayer_discovery', 'select_room', {
+                  noun,
+                  player_count: room.playerCount,
+                  max_players: room.maxPlayers,
+                  source_of_truth: room.sourceOfTruth,
+                });
+                onJoin(room.roomCode);
+              }}
               className="w-full text-left border border-slate-800 hover:border-slate-600 bg-slate-900/50 hover:bg-slate-800/70 px-3 py-2 transition-colors"
             >
               <div className="flex items-center justify-between gap-3">

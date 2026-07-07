@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { storeCloudSave } from '@/lib/glitch/cloudSave';
 import { useGlitch } from '@/lib/glitch/GlitchProvider';
+import { emitGlitchBehaviorEvent } from '@/lib/glitch/behaviorEvents';
 import { emitAudioCue } from '@/lib/audio/audioEvents';
 import { useMultiplayerOptional } from '@/context/MultiplayerContext';
 
@@ -56,6 +57,12 @@ export function useGlitchGameServices({
             player_count: multiplayer.players.length,
           }
         : latestMetadataRef.current;
+      emitGlitchBehaviorEvent('cloud_save', 'attempt', {
+        game: glitch.gameKey,
+        save_kind: isSharedMultiplayerCity ? 'multiplayer_join_handle' : 'full_state',
+        slot_index: 0,
+        play_duration_seconds: playDurationSeconds,
+      });
       storeCloudSave(glitch.client!, {
         gameKey: glitch.gameKey,
         installId: glitch.installId!,
@@ -66,6 +73,12 @@ export function useGlitchGameServices({
         metadata: cloudMetadata,
         playDurationSeconds,
       }).then((result) => {
+        emitGlitchBehaviorEvent('cloud_save', result.status, {
+          game: glitch.gameKey,
+          save_kind: isSharedMultiplayerCity ? 'multiplayer_join_handle' : 'full_state',
+          slot_index: 0,
+          play_duration_seconds: playDurationSeconds,
+        });
         if (result.status === 'conflict') {
           console.warn('[Glitch] Cloud save conflict:', result.conflict);
         } else if (result.status === 'saved') {

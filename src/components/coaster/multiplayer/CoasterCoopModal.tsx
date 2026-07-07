@@ -16,6 +16,7 @@ import { JoinableRoomsList } from '@/components/multiplayer/JoinableRoomsList';
 import { useMultiplayer } from '@/context/MultiplayerContext';
 import { GameState as CoasterGameState } from '@/games/coaster/types';
 import { createInitialCoasterGameState } from '@/context/CoasterContext';
+import { emitGlitchBehaviorEvent } from '@/lib/glitch/behaviorEvents';
 import { useCopyRoomLink } from '@/hooks/useCopyRoomLink';
 import { Copy, Check, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { T, useGT, Plural, Var } from 'gt-next';
@@ -95,6 +96,10 @@ export function CoasterCoopModal({
     if (!parkName.trim()) return;
 
     setIsLoading(true);
+    emitGlitchBehaviorEvent('multiplayer_setup', 'create_start', {
+      game: 'coaster',
+      max_players: maxBuilders,
+    });
     try {
       const stateToShare = createInitialCoasterGameState(parkName);
 
@@ -107,8 +112,16 @@ export function CoasterCoopModal({
 
       onStartGame(true, stateToShare, code);
       onOpenChange(false);
+      emitGlitchBehaviorEvent('multiplayer_setup', 'create_success', {
+        game: 'coaster',
+        max_players: maxBuilders,
+      });
     } catch (err) {
       console.error('Failed to create room:', err);
+      emitGlitchBehaviorEvent('multiplayer_setup', 'create_error', {
+        game: 'coaster',
+        error_type: err instanceof Error ? err.name : 'unknown',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -120,19 +133,33 @@ export function CoasterCoopModal({
     if (codeToJoin.length !== 5) return;
 
     setIsLoading(true);
+    emitGlitchBehaviorEvent('multiplayer_setup', 'join_start', {
+      game: 'coaster',
+      entered_code_length: codeToJoin.length,
+    });
     try {
       await joinRoom(codeToJoin);
       window.history.replaceState({}, '', `/coaster/coop/${codeToJoin}`);
       setIsLoading(false);
       setWaitingForState(true);
+      emitGlitchBehaviorEvent('multiplayer_setup', 'join_connected', {
+        game: 'coaster',
+      });
     } catch (err) {
       console.error('Failed to join room:', err);
       setIsLoading(false);
+      emitGlitchBehaviorEvent('multiplayer_setup', 'join_error', {
+        game: 'coaster',
+        error_type: err instanceof Error ? err.name : 'unknown',
+      });
     }
   };
 
   const handleStartSinglePlayer = () => {
     const stateToPlay = createInitialCoasterGameState(parkName || gt('My Park'));
+    emitGlitchBehaviorEvent('game_start', 'single_player_selected', {
+      game: 'coaster',
+    });
     onStartGame(false, stateToPlay);
     onOpenChange(false);
   };
@@ -360,7 +387,7 @@ export function CoasterCoopModal({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="maxBuilders" className="text-slate-300">
-                  <T>Builder Slots</T>
+                  <T>Number Of Players That Can Join</T>
                 </Label>
                 <Input
                   id="maxBuilders"

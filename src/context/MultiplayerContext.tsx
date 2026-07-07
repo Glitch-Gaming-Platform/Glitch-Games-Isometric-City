@@ -14,6 +14,7 @@ import {
   listJoinableMultiplayerRooms,
   type MultiplayerProviderInstance,
 } from '@/lib/multiplayer/providerFactory';
+import { emitGlitchBehaviorEvent } from '@/lib/glitch/behaviorEvents';
 import {
   GameAction,
   GameActionInput,
@@ -104,7 +105,11 @@ export function MultiplayerContextProvider({
   const handleSetOnRemoteAction = useCallback(
     (callback: ((action: GameAction) => void) | null) => {
       onRemoteActionRef.current = callback;
-      setOnRemoteAction(callback);
+      // React treats a bare function passed to a state setter as an updater and
+      // invokes it with the previous state. Remote action handlers are themselves
+      // functions, so store them through an updater wrapper to preserve the
+      // callback value instead of accidentally calling it with `null`.
+      setOnRemoteAction(() => callback);
       if (callback && pendingActionsRef.current.length > 0) {
         const queuedActions = [...pendingActionsRef.current];
         pendingActionsRef.current = [];
@@ -117,6 +122,10 @@ export function MultiplayerContextProvider({
   );
 
   const handleRemoteAction = useCallback((action: GameAction) => {
+    if (!action || !action.type || !action.playerId) {
+      console.warn('[MultiplayerContext] Ignoring malformed remote action:', action);
+      return;
+    }
     if (onRemoteActionRef.current) {
       onRemoteActionRef.current(action);
       return;
@@ -146,6 +155,11 @@ export function MultiplayerContextProvider({
       pendingActionsRef.current = [];
 
       try {
+        emitGlitchBehaviorEvent('multiplayer_room', 'create_attempt', {
+          max_players: options?.maxPlayers,
+          city_type: options?.cityType,
+          is_public: options?.isPublic,
+        });
         // Generate room code
         const newRoomCode = generateRoomCode();
 
@@ -175,11 +189,19 @@ export function MultiplayerContextProvider({
         setProvider(provider);
         setRoomCode(newRoomCode);
         setConnectionState('connected');
+        emitGlitchBehaviorEvent('multiplayer_room', 'create_success', {
+          max_players: options?.maxPlayers,
+          city_type: options?.cityType,
+          is_public: options?.isPublic,
+        });
 
         return newRoomCode;
       } catch (err) {
         setConnectionState('error');
         setError(err instanceof Error ? err.message : gt('Failed to create room'));
+        emitGlitchBehaviorEvent('multiplayer_room', 'create_error', {
+          error_type: err instanceof Error ? err.name : 'unknown',
+        });
         throw err;
       }
     },
@@ -197,6 +219,9 @@ export function MultiplayerContextProvider({
 
       try {
         const normalizedCode = code.toUpperCase();
+        emitGlitchBehaviorEvent('multiplayer_room', 'join_attempt', {
+          entered_code_length: normalizedCode.length,
+        });
 
         // Create multiplayer provider - state will be loaded from Supabase database
         const provider = await createMultiplayerProvider({
@@ -226,6 +251,9 @@ export function MultiplayerContextProvider({
         setProvider(provider);
         setRoomCode(normalizedCode);
         setConnectionState('connected');
+        emitGlitchBehaviorEvent('multiplayer_room', 'join_success', {
+          entered_code_length: normalizedCode.length,
+        });
 
         // Return room data
         const room: RoomData = {
@@ -241,6 +269,9 @@ export function MultiplayerContextProvider({
       } catch (err) {
         setConnectionState('error');
         setError(err instanceof Error ? err.message : gt('Failed to join room'));
+        emitGlitchBehaviorEvent('multiplayer_room', 'join_error', {
+          error_type: err instanceof Error ? err.name : 'unknown',
+        });
         throw err;
       }
     },
@@ -263,7 +294,11 @@ export function MultiplayerContextProvider({
     setChatMessages([]);
     setVoiceState(DEFAULT_MULTIPLAYER_VOICE_STATE);
     pendingActionsRef.current = [];
-  }, []);
+    emitGlitchBehaviorEvent('multiplayer_room', 'leave', {
+      had_room: !!roomCode,
+      player_count: players.length,
+    });
+  }, [players.length, roomCode]);
 
   const listJoinableRooms = useCallback(async () => {
     try {
@@ -275,24 +310,42 @@ export function MultiplayerContextProvider({
   }, [gt]);
 
   const sendChatMessage = useCallback((text: string) => {
+    if (text.trim()) {
+      emitGlitchBehaviorEvent('multiplayer_chat', 'send_text', {
+        text_length: text.trim().length,
+        player_count: players.length,
+      });
+    }
     providerRef.current?.sendChatMessage(text);
-  }, []);
+  }, [players.length]);
 
   const startVoiceChat = useCallback(async () => {
+    emitGlitchBehaviorEvent('multiplayer_voice', 'start_attempt', {
+      player_count: players.length,
+    });
     await providerRef.current?.startVoiceChat();
-  }, []);
+  }, [players.length]);
 
   const stopVoiceChat = useCallback(async () => {
+    emitGlitchBehaviorEvent('multiplayer_voice', 'stop', {
+      player_count: players.length,
+    });
     await providerRef.current?.stopVoiceChat();
-  }, []);
+  }, [players.length]);
 
   const setVoiceMuted = useCallback((muted: boolean) => {
+    emitGlitchBehaviorEvent('multiplayer_voice', muted ? 'mute' : 'unmute', {
+      player_count: players.length,
+    });
     providerRef.current?.setVoiceMuted(muted);
-  }, []);
+  }, [players.length]);
 
   const setVoiceDeafened = useCallback((deafened: boolean) => {
+    emitGlitchBehaviorEvent('multiplayer_voice', deafened ? 'deafen' : 'undeafen', {
+      player_count: players.length,
+    });
     providerRef.current?.setVoiceDeafened(deafened);
-  }, []);
+  }, [players.length]);
 
   // Dispatch a game action to all peers
   const dispatchAction = useCallback(

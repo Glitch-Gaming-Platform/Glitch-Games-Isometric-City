@@ -15,6 +15,8 @@ import { Label } from '@/components/ui/label';
 import { JoinableRoomsList } from '@/components/multiplayer/JoinableRoomsList';
 import { useMultiplayer } from '@/context/MultiplayerContext';
 import { GameState } from '@/types/game';
+import { emitGlitchBehaviorEvent } from '@/lib/glitch/behaviorEvents';
+import { buildInviteUrl } from '@/lib/glitch/publicUrl';
 import { createInitialGameState, DEFAULT_GRID_SIZE } from '@/lib/simulation';
 import { Copy, Check, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { T, useGT, Plural, Var } from 'gt-next';
@@ -101,6 +103,10 @@ export function CoopModal({
     if (!cityName.trim()) return;
     
     setIsLoading(true);
+    emitGlitchBehaviorEvent('multiplayer_setup', 'create_start', {
+      game: 'isocity',
+      max_players: maxBuilders,
+    });
     try {
       // Use the current game state if provided, otherwise create a fresh city
       const stateToShare = currentGameState 
@@ -118,8 +124,16 @@ export function CoopModal({
       // Start the game immediately with the state and close the modal
       onStartGame(true, stateToShare, code);
       onOpenChange(false);
+      emitGlitchBehaviorEvent('multiplayer_setup', 'create_success', {
+        game: 'isocity',
+        max_players: maxBuilders,
+      });
     } catch (err) {
       console.error('Failed to create room:', err);
+      emitGlitchBehaviorEvent('multiplayer_setup', 'create_error', {
+        game: 'isocity',
+        error_type: err instanceof Error ? err.name : 'unknown',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -131,6 +145,10 @@ export function CoopModal({
     if (codeToJoin.length !== 5) return;
     
     setIsLoading(true);
+    emitGlitchBehaviorEvent('multiplayer_setup', 'join_start', {
+      game: 'isocity',
+      entered_code_length: codeToJoin.length,
+    });
     try {
       // State will be loaded from Supabase database
       await joinRoom(codeToJoin);
@@ -139,15 +157,26 @@ export function CoopModal({
       // Now wait for state to be received from provider
       setIsLoading(false);
       setWaitingForState(true);
+      emitGlitchBehaviorEvent('multiplayer_setup', 'join_connected', {
+        game: 'isocity',
+      });
     } catch (err) {
       console.error('Failed to join room:', err);
       setIsLoading(false);
+      emitGlitchBehaviorEvent('multiplayer_setup', 'join_error', {
+        game: 'isocity',
+        error_type: err instanceof Error ? err.name : 'unknown',
+      });
       // Error is already set by the context
     }
   };
 
   const handleStartSinglePlayer = () => {
     const stateToPlay = createInitialGameState(DEFAULT_GRID_SIZE, cityName || gt('My City'));
+    emitGlitchBehaviorEvent('game_start', 'single_player_selected', {
+      game: 'isocity',
+      grid_size: DEFAULT_GRID_SIZE,
+    });
     onStartGame(false, stateToPlay);
     onOpenChange(false);
   };
@@ -181,8 +210,12 @@ export function CoopModal({
   const handleCopyLink = () => {
     if (!roomCode) return;
     
-    const url = `${window.location.origin}/coop/${roomCode}`;
+    const url = buildInviteUrl(roomCode, 'coop');
     navigator.clipboard.writeText(url);
+    emitGlitchBehaviorEvent('multiplayer_invite', 'copy_link', {
+      game: 'isocity',
+      room_code_length: roomCode.length,
+    });
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -396,7 +429,7 @@ export function CoopModal({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="maxBuilders" className="text-slate-300">
-                  <T>Builder Slots</T>
+                  <T>Number Of Players That Can Join</T>
                 </Label>
                 <Input
                   id="maxBuilders"

@@ -90,6 +90,14 @@ export interface GlitchProgressionSubmitResponse {
   record?: unknown;
 }
 
+export interface GlitchBehaviorEventRequest {
+  game_install_id: string;
+  step_key: string;
+  action_key: string;
+  metadata?: Record<string, unknown>;
+  event_timestamp?: string;
+}
+
 export interface GlitchLobby {
   id: string;
   title_id: string;
@@ -263,6 +271,10 @@ export class GlitchClient {
     const query = new URLSearchParams(Object.entries(params).map(([key, value]) => [key, String(value)]));
     const suffix = query.toString() ? `?${query.toString()}` : '';
     return this.request(`/titles/${this.titleId}/leaderboards/${encodeURIComponent(apiKey)}${suffix}`);
+  }
+
+  createEvent(body: GlitchBehaviorEventRequest): Promise<{ data: unknown }> {
+    return this.request(`/titles/${this.titleId}/events`, { method: 'POST', body });
   }
 
   searchLobbies(params: Record<string, string | number | boolean> = {}): Promise<{ data: GlitchLobby[] }> {

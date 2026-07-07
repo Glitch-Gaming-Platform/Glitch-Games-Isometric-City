@@ -5,6 +5,7 @@ import React, { createContext, useCallback, useContext, useEffect, useState, use
 import { compressToUTF16, decompressFromUTF16 } from 'lz-string';
 import { serializeAndCompressAsync } from '@/lib/saveWorkerManager';
 import { emitAudioCue } from '@/lib/audio/audioEvents';
+import { emitGlitchBehaviorEvent } from '@/lib/glitch/behaviorEvents';
 import { simulateTick } from '@/lib/simulation';
 import {
   Budget,
@@ -667,6 +668,7 @@ export function GameProvider({ children, startFresh = false }: { children: React
   // Callback for multiplayer action broadcast
   const placeCallbackRef = useRef<((args: { x: number; y: number; tool: Tool }) => void) | null>(null);
   const bridgeCallbackRef = useRef<((args: { pathTiles: { x: number; y: number }[]; trackType: 'road' | 'rail' }) => void) | null>(null);
+  const placementAnalyticsRef = useRef<Record<string, number>>({});
   
   // Sprite pack state
   const [currentSpritePack, setCurrentSpritePack] = useState<SpritePack>(() => getSpritePack(DEFAULT_SPRITE_PACK_ID));
@@ -984,6 +986,16 @@ export function GameProvider({ children, startFresh = false }: { children: React
 
     if (placementCue) {
       emitAudioCue(placementCue);
+      const now = Date.now();
+      const key = `place:${currentTool}`;
+      if (!placementAnalyticsRef.current[key] || now - placementAnalyticsRef.current[key] > 10_000) {
+        placementAnalyticsRef.current[key] = now;
+        emitGlitchBehaviorEvent('build', currentTool === 'bulldoze' ? 'bulldoze' : 'place', {
+          game: 'isocity',
+          tool: currentTool,
+          is_zone: currentTool.startsWith('zone_'),
+        });
+      }
     }
     
     // Broadcast to multiplayer if this is a local action (not remote)
@@ -1005,6 +1017,9 @@ export function GameProvider({ children, startFresh = false }: { children: React
     });
     if (upgradeSucceeded) {
       emitAudioCue('build.upgrade');
+      emitGlitchBehaviorEvent('progression', 'upgrade_service_building', {
+        game: 'isocity',
+      });
     }
     return upgradeSucceeded;
   }, []);
@@ -1012,6 +1027,13 @@ export function GameProvider({ children, startFresh = false }: { children: React
   // Called after a road/rail drag operation to create bridges for water crossings
   const finishTrackDrag = useCallback((pathTiles: { x: number; y: number }[], trackType: 'road' | 'rail', isRemote = false) => {
     setState((prev) => createBridgesOnPath(prev, pathTiles, trackType));
+    if (!isRemote) {
+      emitGlitchBehaviorEvent('build', 'finish_track_drag', {
+        game: 'isocity',
+        track_type: trackType,
+        path_length: pathTiles.length,
+      });
+    }
     
     // Broadcast to multiplayer if this is a local action (not remote)
     if (!isRemote && bridgeCallbackRef.current) {
@@ -1159,6 +1181,10 @@ export function GameProvider({ children, startFresh = false }: { children: React
       gameVersion: (prev.gameVersion ?? 0) + 1,
     }));
     emitAudioCue('ui.confirm');
+    emitGlitchBehaviorEvent('game_start', 'new_city', {
+      game: 'isocity',
+      grid_size: size ?? DEFAULT_GRID_SIZE,
+    });
   }, []);
 
   const loadState = useCallback((stateString: string): boolean => {
@@ -1233,6 +1259,11 @@ export function GameProvider({ children, startFresh = false }: { children: React
           gameVersion: (prev.gameVersion ?? 0) + 1,
         }));
         emitAudioCue('ui.confirm');
+        emitGlitchBehaviorEvent('save_load', 'load_state', {
+          game: 'isocity',
+          grid_size: parsed.gridSize,
+          population_bucket: Math.floor((parsed.stats.population || 0) / 500) * 500,
+        });
         return true;
       }
       return false;
@@ -1455,6 +1486,10 @@ export function GameProvider({ children, startFresh = false }: { children: React
     }));
     if (amount > 0) {
       emitAudioCue('economy.deposit');
+      emitGlitchBehaviorEvent('economy', 'money_added', {
+        game: 'isocity',
+        amount_bucket: Math.floor(amount / 1000) * 1000,
+      });
     }
   }, []);
 

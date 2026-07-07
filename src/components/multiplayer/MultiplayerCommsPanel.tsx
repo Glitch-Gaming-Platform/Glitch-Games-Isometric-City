@@ -6,9 +6,17 @@ import { useMultiplayerOptional } from '@/context/MultiplayerContext';
 
 interface MultiplayerCommsPanelProps {
   className?: string;
+  buttonClassName?: string;
+  panelClassName?: string;
+  showButtonLabel?: boolean;
 }
 
-export function MultiplayerCommsPanel({ className = '' }: MultiplayerCommsPanelProps) {
+export function MultiplayerCommsPanel({
+  className = '',
+  buttonClassName,
+  panelClassName,
+  showButtonLabel = false,
+}: MultiplayerCommsPanelProps) {
   const multiplayer = useMultiplayerOptional();
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState('');
@@ -33,14 +41,15 @@ export function MultiplayerCommsPanel({ className = '' }: MultiplayerCommsPanelP
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="h-10 w-10 inline-flex items-center justify-center rounded bg-slate-900/90 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shadow-lg"
+          className={buttonClassName || 'h-10 w-10 inline-flex items-center justify-center rounded bg-slate-900/90 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shadow-lg'}
           aria-label="Open multiplayer chat"
           title="Open multiplayer chat"
         >
           <MessageSquare className="h-4 w-4" />
+          {showButtonLabel && <span className="ml-1.5 text-xs">Chat</span>}
         </button>
       ) : (
-        <div className="w-80 max-w-[calc(100vw-1rem)] bg-slate-950/95 border border-slate-700 text-white shadow-xl">
+        <div className={panelClassName || 'w-80 max-w-[calc(100vw-1rem)] bg-slate-950/95 border border-slate-700 text-white shadow-xl'}>
           <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800">
             <div className="flex items-center gap-2 text-sm">
               <MessageSquare className="h-4 w-4 text-slate-400" />

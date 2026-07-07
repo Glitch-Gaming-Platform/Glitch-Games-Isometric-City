@@ -12,6 +12,10 @@ export interface GlitchTitleRuntimeConfig {
 }
 
 export const GLITCH_API_BASE_URL = process.env.NEXT_PUBLIC_GLITCH_API_URL || 'https://api.glitch.fun/api';
+export const GLITCH_PUBLIC_ORIGIN = (process.env.NEXT_PUBLIC_GLITCH_PUBLIC_ORIGIN || 'https://www.glitch.fun').replace(/\/+$/, '');
+export const GLITCH_MMO_PRESENCE_ENABLED =
+  process.env.NEXT_PUBLIC_GLITCH_MMO_PRESENCE_ENABLED === '1' ||
+  process.env.NEXT_PUBLIC_GLITCH_MMO_PRESENCE_ENABLED === 'true';
 
 export const GLITCH_ENABLED =
   process.env.NEXT_PUBLIC_GLITCH_ENABLED === '1' ||
@@ -65,4 +69,3 @@ function parseKeyList(value: string | undefined): string[] {
     .map((item) => item.trim())
     .filter(Boolean);
 }
-

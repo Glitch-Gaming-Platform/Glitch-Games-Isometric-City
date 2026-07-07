@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState, useRef } from 'react';
 import { emitAudioCue } from '@/lib/audio/audioEvents';
+import { emitGlitchBehaviorEvent } from '@/lib/glitch/behaviorEvents';
 import {
   GameState,
   Tool,
@@ -1448,6 +1449,7 @@ export function CoasterProvider({
   const coasterBuildCancelCallbackRef = useRef<(() => void) | null>(null);
   const parkSettingsCallbackRef = useRef<((settings: Partial<ParkSettings>) => void) | null>(null);
   const speedCallbackRef = useRef<((speed: 0 | 1 | 2 | 3) => void) | null>(null);
+  const placementAnalyticsRef = useRef<Record<string, number>>({});
   
   // Keep ref in sync
   useEffect(() => {
@@ -2939,6 +2941,17 @@ export function CoasterProvider({
     }
     if (!isRemote && currentTool !== 'select' && currentTool !== 'bulldoze') {
       emitAudioCue(getCoasterPlacementCue(currentTool));
+      const now = Date.now();
+      const key = `place:${currentTool}`;
+      if (!placementAnalyticsRef.current[key] || now - placementAnalyticsRef.current[key] > 10_000) {
+        placementAnalyticsRef.current[key] = now;
+        emitGlitchBehaviorEvent('build', 'place', {
+          game: 'coaster',
+          tool: currentTool,
+          is_coaster_track: currentTool.startsWith('coaster_'),
+          is_ride: currentTool.startsWith('ride_') || currentTool.startsWith('show_'),
+        });
+      }
     }
   }, []);
   
@@ -3060,6 +3073,9 @@ export function CoasterProvider({
     }
     if (!isRemote) {
       emitAudioCue('build.bulldoze');
+      emitGlitchBehaviorEvent('build', 'bulldoze', {
+        game: 'coaster',
+      });
     }
   }, []);
   
@@ -3078,6 +3094,10 @@ export function CoasterProvider({
     }
     if (!options?.isRemote) {
       emitAudioCue('coaster.ride');
+      emitGlitchBehaviorEvent('coaster_builder', 'start_build', {
+        game: 'coaster',
+        coaster_type: coasterType,
+      });
     }
   }, []);
   
@@ -3099,6 +3119,9 @@ export function CoasterProvider({
     }
     if (!isRemote) {
       emitAudioCue('progress.achievement');
+      emitGlitchBehaviorEvent('coaster_builder', 'finish_build', {
+        game: 'coaster',
+      });
     }
   }, []);
   
@@ -3114,11 +3137,20 @@ export function CoasterProvider({
     if (!isRemote && coasterBuildCancelCallbackRef.current) {
       coasterBuildCancelCallbackRef.current();
     }
+    if (!isRemote) {
+      emitGlitchBehaviorEvent('coaster_builder', 'cancel_build', {
+        game: 'coaster',
+      });
+    }
   }, []);
   
   // Place a line of track tiles (for drag-to-draw functionality)
   const placeTrackLine = useCallback((tiles: { x: number; y: number }[]) => {
     if (tiles.length === 0) return;
+    emitGlitchBehaviorEvent('coaster_builder', 'place_track_line', {
+      game: 'coaster',
+      path_length: tiles.length,
+    });
     
     setState(prev => {
       const newGrid = prev.grid.map(row => row.map(tile => ({ ...tile })));
@@ -3449,6 +3481,10 @@ export function CoasterProvider({
     }
     if (!isRemote) {
       emitAudioCue('ui.select');
+      emitGlitchBehaviorEvent('settings', 'update_park_settings', {
+        game: 'coaster',
+        changed_keys: Object.keys(settings).filter((key) => key !== 'name'),
+      });
     }
   }, []);
   
@@ -3459,6 +3495,10 @@ export function CoasterProvider({
     }));
     if (amount > 0) {
       emitAudioCue('economy.deposit');
+      emitGlitchBehaviorEvent('economy', 'cash_added', {
+        game: 'coaster',
+        amount_bucket: Math.floor(amount / 1000) * 1000,
+      });
     }
   }, []);
 
@@ -3491,6 +3531,9 @@ export function CoasterProvider({
         if (ok) {
           setHasSavedGame(true);
           emitAudioCue('ui.confirm');
+          emitGlitchBehaviorEvent('save_load', 'manual_save', {
+            game: 'coaster',
+          });
         }
       })
       .catch((e) => {
@@ -3516,6 +3559,11 @@ export function CoasterProvider({
         setState(finalState);
         persistCoasterSave(finalState);
         emitAudioCue('ui.confirm');
+        emitGlitchBehaviorEvent('save_load', 'load_game', {
+          game: 'coaster',
+          grid_size: finalState.gridSize,
+          guests_bucket: Math.floor((finalState.stats.guestsInPark || 0) / 250) * 250,
+        });
         return true;
       }
     } catch (e) {
@@ -3528,6 +3576,9 @@ export function CoasterProvider({
     setState(createInitialCoasterGameState(name));
     setHasSavedGame(false);
     emitAudioCue('ui.confirm');
+    emitGlitchBehaviorEvent('game_start', 'new_park', {
+      game: 'coaster',
+    });
   }, []);
   
   const exportState = useCallback((): string => {
@@ -3552,6 +3603,11 @@ export function CoasterProvider({
         setState(finalState);
         persistCoasterSave(finalState);
         emitAudioCue('ui.confirm');
+        emitGlitchBehaviorEvent('save_load', 'load_state', {
+          game: 'coaster',
+          grid_size: finalState.gridSize,
+          guests_bucket: Math.floor((finalState.stats.guestsInPark || 0) / 250) * 250,
+        });
         return true;
       }
     } catch (e) {

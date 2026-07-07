@@ -1,6 +1,6 @@
 # Audio Manifest
 
-This game now has a shared audio system in `src/lib/audio` and a structured manifest in `src/lib/audio/soundManifest.ts`. The same cues are available to IsoCity and IsoCoaster.
+This game now has a shared audio system in `src/lib/audio`, a structured SFX manifest in `src/lib/audio/soundManifest.ts`, and a structured music-loop manifest in `src/lib/audio/musicManifest.ts`. The same audio provider is available to IsoCity and IsoCoaster.
 
 ## Runtime Files
 
@@ -32,6 +32,26 @@ To enable those ambience files later:
 3. Add each file to `AUDIO_ASSET_MANIFEST` with source URL, license, attribution, byte size, and SHA-256.
 4. Add loop or one-shot cue entries in `AUDIO_CUE_LIBRARY`.
 
+## Runtime Music
+
+The music bundle `music-loop-bundle-2026-q2.zip` was inspected and copied into `public/audio/abstraction/music-loop-bundle/`.
+
+The included `_LICENSE.txt` says the bundle is CC0/Public Domain and permits commercial and non-commercial use, modification, and redistribution. Attribution is optional. The included `_README.txt` recommends OGG files for seamless looping, so only the `.ogg` loops were bundled; metadata PNG files were intentionally excluded from runtime assets.
+
+All music entries are recorded in `MUSIC_TRACK_MANIFEST` with original filename, sanitized runtime filename, public path, source archive, creator, source URL, byte size, SHA-256, intended game fit, and license summary. The source license and README files are shipped beside the loops:
+
+- `public/audio/abstraction/music-loop-bundle/_LICENSE.txt`
+- `public/audio/abstraction/music-loop-bundle/_README.txt`
+
+Default tracks:
+
+| game | default track id | runtime file |
+| --- | --- | --- |
+| IsoCity | `week-18-distant-skyline-city-lights` | `week-18-distant-skyline-city-lights.ogg` |
+| IsoCoaster | `week-21-freefall-glide` | `week-21-freefall-glide.ogg` |
+
+Music playback starts after the browser's first user gesture. Players can open the music control in-game to change tracks, mute/unmute music, and adjust music volume independently from sound effects. SFX mute remains separate from music mute.
+
 ## Cue Model
 
 Game code emits named cues with `emitAudioCue(...)`. The audio provider chooses variants, handles browser gesture unlock, applies cooldowns, and uses generated Web Audio tones where no licensed file exists.
@@ -51,4 +71,3 @@ Important cues:
 | `glitch.validated` | successful Glitch install validation |
 | `glitch.denied` | failed validation or access block |
 | `progress.achievement` | achievement-style fanfare |
-

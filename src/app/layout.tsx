@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next';
 import { Playfair_Display, DM_Sans } from 'next/font/google';
-import { Analytics } from '@vercel/analytics/next';
 import './globals.css';
 import { getLocale } from "gt-next/server";
 import { GTProvider } from "gt-next";
@@ -90,7 +89,6 @@ export default async function RootLayout({ children }: {children: React.ReactNod
           <AppProviders>
             {children}
           </AppProviders>
-          <Analytics />
         </GTProvider>
       </body>
     </html>

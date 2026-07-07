@@ -1,7 +1,7 @@
 import { emitAudioCue } from '@/lib/audio/audioEvents';
 import { createInitialCoasterGameState } from '@/context/CoasterContext';
 import { GlitchClient, GlitchLobby, GlitchLobbyMessage, GlitchPresence, GlitchVoicePacket } from '@/lib/glitch/client';
-import { detectGlitchGameKeyFromPath, getGlitchTitleConfig, GlitchGameKey } from '@/lib/glitch/config';
+import { detectGlitchGameKeyFromPath, getGlitchTitleConfig, GLITCH_MMO_PRESENCE_ENABLED, GlitchGameKey } from '@/lib/glitch/config';
 import { getStableUserInstallId } from '@/lib/glitch/install';
 import { createInitialGameState, DEFAULT_GRID_SIZE } from '@/lib/simulation';
 import {
@@ -123,7 +123,9 @@ export class GlitchMultiplayerProvider {
       await this.replayLobbyMessagesFromStart();
     }
 
-    await this.tryEnterMmoPresence();
+    if (GLITCH_MMO_PRESENCE_ENABLED) {
+      await this.tryEnterMmoPresence();
+    }
     this.startPollingLobbyMessages();
     this.startPresenceHeartbeat();
   }

@@ -1,4 +1,5 @@
 import { AUDIO_CUE_LIBRARY, AudioCueVariant, GameAudioCue } from './soundManifest';
+import { DEFAULT_COASTER_MUSIC_TRACK_ID, DEFAULT_MUSIC_TRACK_ID, getMusicTrack } from './musicManifest';
 
 const AUDIO_SETTINGS_KEY = 'isocity-audio-settings-v1';
 
@@ -6,13 +7,26 @@ export interface AudioSettings {
   enabled: boolean;
   masterVolume: number;
   sfxVolume: number;
+  musicEnabled: boolean;
+  musicVolume: number;
+  musicTrackId: string;
 }
 
 const DEFAULT_SETTINGS: AudioSettings = {
   enabled: true,
   masterVolume: 0.72,
   sfxVolume: 0.86,
+  musicEnabled: true,
+  musicVolume: 0.42,
+  musicTrackId: DEFAULT_MUSIC_TRACK_ID,
 };
+
+function getDefaultSettings(): AudioSettings {
+  return {
+    ...DEFAULT_SETTINGS,
+    musicTrackId: isCoasterRuntime() ? DEFAULT_COASTER_MUSIC_TRACK_ID : DEFAULT_MUSIC_TRACK_ID,
+  };
+}
 
 function clampUnit(value: number): number {
   return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
@@ -22,19 +36,28 @@ function randomBetween([min, max]: [number, number]): number {
   return min + Math.random() * (max - min);
 }
 
+function isCoasterRuntime(): boolean {
+  if (process.env.NEXT_PUBLIC_GLITCH_GAME_KEY === 'coaster') return true;
+  return typeof window !== 'undefined' && window.location.pathname.startsWith('/coaster');
+}
+
 export function loadAudioSettings(): AudioSettings {
-  if (typeof window === 'undefined') return DEFAULT_SETTINGS;
+  const defaults = getDefaultSettings();
+  if (typeof window === 'undefined') return defaults;
   try {
     const raw = window.localStorage.getItem(AUDIO_SETTINGS_KEY);
-    if (!raw) return DEFAULT_SETTINGS;
+    if (!raw) return defaults;
     const parsed = JSON.parse(raw) as Partial<AudioSettings>;
     return {
-      enabled: parsed.enabled ?? DEFAULT_SETTINGS.enabled,
-      masterVolume: clampUnit(parsed.masterVolume ?? DEFAULT_SETTINGS.masterVolume),
-      sfxVolume: clampUnit(parsed.sfxVolume ?? DEFAULT_SETTINGS.sfxVolume),
+      enabled: parsed.enabled ?? defaults.enabled,
+      masterVolume: clampUnit(parsed.masterVolume ?? defaults.masterVolume),
+      sfxVolume: clampUnit(parsed.sfxVolume ?? defaults.sfxVolume),
+      musicEnabled: parsed.musicEnabled ?? defaults.musicEnabled,
+      musicVolume: clampUnit(parsed.musicVolume ?? defaults.musicVolume),
+      musicTrackId: typeof parsed.musicTrackId === 'string' ? parsed.musicTrackId : defaults.musicTrackId,
     };
   } catch {
-    return DEFAULT_SETTINGS;
+    return defaults;
   }
 }
 
@@ -49,6 +72,8 @@ export class GameAudioEngine {
   private lastPlayedAt = new Map<GameAudioCue, number>();
   private context: AudioContext | null = null;
   private unlocked = false;
+  private musicAudio: HTMLAudioElement | null = null;
+  private activeMusicTrackId: string | null = null;
 
   constructor(settings: AudioSettings = loadAudioSettings()) {
     this.settings = settings;
@@ -60,12 +85,21 @@ export class GameAudioEngine {
   }
 
   setSettings(next: Partial<AudioSettings>): AudioSettings {
+    const previousTrackId = this.settings.musicTrackId;
     this.settings = {
       enabled: next.enabled ?? this.settings.enabled,
       masterVolume: clampUnit(next.masterVolume ?? this.settings.masterVolume),
       sfxVolume: clampUnit(next.sfxVolume ?? this.settings.sfxVolume),
+      musicEnabled: next.musicEnabled ?? this.settings.musicEnabled,
+      musicVolume: clampUnit(next.musicVolume ?? this.settings.musicVolume),
+      musicTrackId: next.musicTrackId ?? this.settings.musicTrackId,
     };
     saveAudioSettings(this.settings);
+    if (this.settings.musicTrackId !== previousTrackId) {
+      this.startMusic(this.settings.musicTrackId).catch(() => undefined);
+    } else {
+      this.applyMusicSettings();
+    }
     return this.settings;
   }
 
@@ -76,6 +110,9 @@ export class GameAudioEngine {
       await this.context.resume();
     }
     this.unlocked = true;
+    if (this.settings.musicEnabled) {
+      this.startMusic().catch(() => undefined);
+    }
   }
 
   playCue(cue: GameAudioCue, gainOverride?: number, allowDuringCooldown = false): void {
@@ -153,5 +190,40 @@ export class GameAudioEngine {
     oscillator.start(start);
     oscillator.stop(start + duration + 0.02);
   }
-}
 
+  async startMusic(trackId: string = this.settings.musicTrackId): Promise<void> {
+    if (typeof window === 'undefined') return;
+    const track = getMusicTrack(trackId);
+    if (this.activeMusicTrackId !== track.id || !this.musicAudio) {
+      this.stopMusic();
+      this.musicAudio = new Audio(track.publicPath);
+      this.musicAudio.loop = true;
+      this.musicAudio.preload = 'auto';
+      this.musicAudio.crossOrigin = 'anonymous';
+      this.activeMusicTrackId = track.id;
+    }
+    this.applyMusicSettings();
+    if (!this.settings.musicEnabled || !this.unlocked) return;
+    await this.musicAudio.play();
+  }
+
+  stopMusic(): void {
+    if (!this.musicAudio) return;
+    this.musicAudio.pause();
+    this.musicAudio.currentTime = 0;
+    this.musicAudio = null;
+    this.activeMusicTrackId = null;
+  }
+
+  private applyMusicSettings(): void {
+    if (!this.musicAudio) return;
+    this.musicAudio.volume = clampUnit(this.settings.masterVolume * this.settings.musicVolume);
+    if (!this.settings.musicEnabled) {
+      this.musicAudio.pause();
+      return;
+    }
+    if (this.unlocked) {
+      this.musicAudio.play().catch(() => undefined);
+    }
+  }
+}
