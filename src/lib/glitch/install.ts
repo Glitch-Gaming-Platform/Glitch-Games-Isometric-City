@@ -4,11 +4,13 @@ import { GlitchGameKey } from './config';
 const INSTALL_ID_PREFIX = 'glitch-install-id';
 const USER_INSTALL_ID_PREFIX = 'glitch-user-install-id';
 const SESSION_ID_PREFIX = 'glitch-session-id';
+const USER_NAME_PREFIX = 'glitch-user-name';
 
 interface GlitchLaunchInstallContext {
   installId: string;
   userInstallId: string;
   sessionId: string;
+  userName: string | null;
 }
 
 export interface GlitchInstallSession {
@@ -31,6 +33,29 @@ export function getStableUserInstallId(gameKey: GlitchGameKey): string {
   const id = `${gameKey}:web:${crypto.randomUUID()}`;
   window.localStorage.setItem(key, id);
   return id;
+}
+
+export function getGlitchUserName(gameKey: GlitchGameKey): string | null {
+  if (typeof window === 'undefined') return null;
+  const launchContext = readGlitchLaunchInstallContext(gameKey);
+  if (launchContext?.userName) {
+    persistGlitchUserName(gameKey, launchContext.userName);
+    return launchContext.userName;
+  }
+
+  const storedName = window.localStorage.getItem(`${USER_NAME_PREFIX}:${gameKey}`);
+  return sanitizeGlitchUserName(storedName);
+}
+
+export function persistGlitchUserName(gameKey: GlitchGameKey, userName: string | null | undefined): void {
+  if (typeof window === 'undefined') return;
+  const sanitized = sanitizeGlitchUserName(userName);
+  const key = `${USER_NAME_PREFIX}:${gameKey}`;
+  if (sanitized) {
+    window.localStorage.setItem(key, sanitized);
+  } else {
+    window.localStorage.removeItem(key);
+  }
 }
 
 export function getStableSessionId(gameKey: GlitchGameKey): string {
@@ -68,6 +93,7 @@ export async function createOrReuseInstall(client: GlitchClient, gameKey: Glitch
   if (launchContext) {
     persistInstallId(gameKey, launchContext.installId);
     const validation = await client.validateInstall(launchContext.installId);
+    persistGlitchUserName(gameKey, sanitizeGlitchUserName(validation.user_name) ?? launchContext.userName);
     return {
       install: buildLaunchInstall(client, launchContext, validation.user_id ?? null),
       validation,
@@ -78,6 +104,7 @@ export async function createOrReuseInstall(client: GlitchClient, gameKey: Glitch
 
   const userInstallId = getStableUserInstallId(gameKey);
   const sessionId = getStableSessionId(gameKey);
+  const userName = getGlitchUserName(gameKey);
   const installResponse = await client.createInstall({
     user_install_id: userInstallId,
     platform: 'web',
@@ -87,12 +114,14 @@ export async function createOrReuseInstall(client: GlitchClient, gameKey: Glitch
     build_type: 'production',
     device_id: userInstallId,
     session_id: sessionId,
+    ...(userName ? { user_name: userName } : {}),
   });
   persistInstallId(gameKey, installResponse.data.id);
 
   const validation = await client.validateInstall(installResponse.data.id, {
     device_id: userInstallId,
   });
+  persistGlitchUserName(gameKey, sanitizeGlitchUserName(validation.user_name) ?? userName);
 
   return {
     install: installResponse.data,
@@ -106,13 +135,15 @@ export async function refreshInstallHeartbeat(client: GlitchClient, gameKey: Gli
   try {
     const launchContext = readGlitchLaunchInstallContext(gameKey);
     if (launchContext) {
-      await client.validateInstall(launchContext.installId);
+      const validation = await client.validateInstall(launchContext.installId);
+      persistGlitchUserName(gameKey, sanitizeGlitchUserName(validation.user_name) ?? launchContext.userName);
       persistInstallId(gameKey, launchContext.installId);
       return buildLaunchInstall(client, launchContext, null);
     }
 
     const userInstallId = getStableUserInstallId(gameKey);
     const sessionId = getStableSessionId(gameKey);
+    const userName = getGlitchUserName(gameKey);
     const response = await client.createInstall({
       user_install_id: userInstallId,
       platform: 'web',
@@ -122,6 +153,7 @@ export async function refreshInstallHeartbeat(client: GlitchClient, gameKey: Gli
       build_type: 'production',
       device_id: userInstallId,
       session_id: sessionId,
+      ...(userName ? { user_name: userName } : {}),
     });
     persistInstallId(gameKey, response.data.id);
     return response.data;
@@ -139,7 +171,8 @@ function readGlitchLaunchInstallContext(gameKey: GlitchGameKey): GlitchLaunchIns
 
   const userInstallId = params.get('user_install_id') || installId;
   const sessionId = params.get('session_id') || getStoredSessionId(gameKey) || installId;
-  return { installId, userInstallId, sessionId };
+  const userName = readGlitchUserNameFromSearchParams(params);
+  return { installId, userInstallId, sessionId, userName };
 }
 
 function buildLaunchInstall(client: GlitchClient, launchContext: GlitchLaunchInstallContext, userId: string | null): GlitchInstall {
@@ -166,6 +199,22 @@ function getStoredSessionId(gameKey: GlitchGameKey): string | null {
 
 function looksLikeUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function readGlitchUserNameFromSearchParams(params: URLSearchParams): string | null {
+  const keys = ['user_name', 'username', 'display_name', 'displayName', 'player_name', 'playerName', 'name'];
+  for (const key of keys) {
+    const value = sanitizeGlitchUserName(params.get(key));
+    if (value) return value;
+  }
+  return null;
+}
+
+function sanitizeGlitchUserName(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim().replace(/\s+/g, ' ').slice(0, 80);
+  if (!trimmed || /^guest player$/i.test(trimmed)) return null;
+  return trimmed;
 }
 
 function inferDeviceType(): string {

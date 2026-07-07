@@ -32,13 +32,13 @@ export function MultiplayerRoomBadge({
     multiplayer.voiceState.status === 'deafened';
 
   return (
-    <div className="bg-slate-900/95 border border-slate-700 rounded-lg px-3 py-2 shadow-lg min-w-[180px]">
+    <div className="bg-slate-950/90 border border-white/10 rounded-md px-3 py-2 shadow-[0_18px_45px_rgba(0,0,0,0.32)] min-w-[190px] backdrop-blur-md">
       <div className="flex items-center gap-2 text-sm text-white">
-        <span className="font-mono font-medium tracking-wider">{roomCode}</span>
+        <span className="rounded-sm border border-white/10 bg-white/[0.04] px-2 py-1 font-mono text-xs font-semibold tracking-[0.16em]">{roomCode}</span>
         <button
           type="button"
           onClick={handleCopyRoomLink}
-          className="h-7 w-7 inline-flex items-center justify-center hover:bg-white/10 rounded transition-colors"
+          className="h-7 w-7 inline-flex items-center justify-center border border-transparent hover:border-white/10 hover:bg-white/10 rounded-sm transition-colors"
           title="Copy invite link"
           aria-label="Copy invite link"
         >
@@ -51,8 +51,8 @@ export function MultiplayerRoomBadge({
         <MultiplayerCommsPanel
           className="relative"
           showButtonLabel={!compact}
-          buttonClassName="h-7 inline-flex items-center justify-center px-2 border border-slate-700 text-slate-300 hover:text-white hover:bg-white/10 rounded transition-colors"
-          panelClassName="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-1rem)] bg-slate-950/95 border border-slate-700 text-white shadow-xl"
+          buttonClassName="h-7 inline-flex items-center justify-center px-2 border border-white/10 bg-white/[0.03] text-slate-300 hover:text-white hover:bg-white/10 rounded-sm transition-colors"
+          panelClassName="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-1rem)] bg-slate-950/95 border border-white/10 text-white shadow-[0_18px_45px_rgba(0,0,0,0.36)] rounded-md"
         />
         <button
           type="button"
@@ -63,7 +63,7 @@ export function MultiplayerRoomBadge({
               void multiplayer.startVoiceChat();
             }
           }}
-          className="h-7 inline-flex items-center justify-center gap-1 px-2 border border-slate-700 text-slate-300 hover:text-white hover:bg-white/10 rounded transition-colors disabled:opacity-50"
+          className="h-7 inline-flex items-center justify-center gap-1 px-2 border border-white/10 bg-white/[0.03] text-slate-300 hover:text-white hover:bg-white/10 rounded-sm transition-colors disabled:opacity-50"
           disabled={multiplayer.voiceState.status === 'joining'}
           title={voiceConnected ? 'Leave voice chat' : 'Join voice chat'}
           aria-label={voiceConnected ? 'Leave voice chat' : 'Join voice chat'}
@@ -73,7 +73,7 @@ export function MultiplayerRoomBadge({
         </button>
       </div>
       {players.length > 0 && (
-        <div className="mt-1.5 space-y-0.5">
+        <div className="mt-2 space-y-1 border-t border-white/10 pt-2">
           {players.map((player) => (
             <div key={player.id} className="flex items-center gap-1.5 text-xs text-slate-400">
               <span className={`w-2 h-2 rounded-full ${statusColorClassName}`} />

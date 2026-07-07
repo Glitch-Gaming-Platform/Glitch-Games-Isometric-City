@@ -2,7 +2,7 @@ import { emitAudioCue } from '@/lib/audio/audioEvents';
 import { createInitialCoasterGameState } from '@/context/CoasterContext';
 import { GlitchClient, GlitchLobby, GlitchLobbyMessage, GlitchPresence, GlitchVoicePacket } from '@/lib/glitch/client';
 import { detectGlitchGameKeyFromPath, getGlitchTitleConfig, GLITCH_MMO_PRESENCE_ENABLED, GlitchGameKey } from '@/lib/glitch/config';
-import { getStableUserInstallId } from '@/lib/glitch/install';
+import { getGlitchUserName, getStableUserInstallId } from '@/lib/glitch/install';
 import { createInitialGameState, DEFAULT_GRID_SIZE } from '@/lib/simulation';
 import {
   GameAction,
@@ -77,14 +77,15 @@ export class GlitchMultiplayerProvider {
   constructor(options: MultiplayerProviderOptions) {
     this.options = options;
     this.roomCode = options.roomCode.toUpperCase();
-    this.peerId = getStableUserInstallId(detectGlitchGameKeyFromPath());
     this.gameKey = detectGlitchGameKeyFromPath();
+    this.peerId = getStableUserInstallId(this.gameKey);
     this.client = new GlitchClient(getGlitchTitleConfig(this.gameKey));
     this.gameState = options.initialGameState || null;
     this.isCreator = !!options.initialGameState;
+    const glitchUserName = getGlitchUserName(this.gameKey);
     this.player = {
       id: this.peerId,
-      name: options.playerName || generatePlayerName(),
+      name: options.playerName || glitchUserName || generatePlayerName(),
       color: generatePlayerColor(),
       joinedAt: Date.now(),
       isHost: false,
@@ -197,6 +198,7 @@ export class GlitchMultiplayerProvider {
           })
         : await this.client.createVoiceRoom({
             player_id: this.peerId,
+            display_name: this.player.name,
             lobby_id: this.lobby.id,
             provider: 'glitch_relay',
             topology: 'lobby',
