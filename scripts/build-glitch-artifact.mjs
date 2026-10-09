@@ -85,9 +85,7 @@ export async function buildGlitchArtifact(gameKey, options = {}) {
     'ENV HOSTNAME=0.0.0.0',
     'ENV PORT=3000',
     'COPY . .',
-    // Next standalone already contains its traced runtime dependencies.
-    // Installing the whole workspace again bloats the image and cold starts.
-    'RUN test -f node_modules/next/package.json',
+    'RUN rm -rf node_modules && npm ci --omit=dev',
     'EXPOSE 3000',
     'CMD ["node", "server.js"]',
     '',
