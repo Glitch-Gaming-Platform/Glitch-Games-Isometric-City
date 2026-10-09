@@ -104,6 +104,13 @@ export async function buildGlitchArtifact(gameKey, options = {}) {
       next_standalone: true,
       runtime: 'next',
       target_port: 3000,
+      // Production gameplay saves live in browser storage and multiplayer
+      // rooms are handled by external Glitch/Supabase services. No local
+      // database, authoritative server tick, or long-lived world process.
+      // Preserve the reviewed scale-to-zero policy on future deployments.
+      capacity_model: 'serverless',
+      container_min_replicas: 0,
+      container_max_replicas: 10,
     },
   }, null, 2));
 
